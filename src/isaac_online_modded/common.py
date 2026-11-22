@@ -9,9 +9,16 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TextIO
 
 DEFAULT_BACKUP_SUFFIX = ".bak"
+
+LOG_COLORS = {
+    "INFO": "\x1b[36m",
+    "WARN": "\x1b[33m",
+    "ERROR": "\x1b[31m",
+}
+RESET_COLOR = "\x1b[0m"
 
 
 class PatchError(RuntimeError):
@@ -60,16 +67,37 @@ class BinaryPatch:
             )
 
 
+def color_enabled(stream: TextIO) -> bool:
+    """Honor NO_COLOR/FORCE_COLOR and only color interactive terminals."""
+
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
+        return True
+    if os.environ.get("TERM") == "dumb":
+        return False
+    return bool(getattr(stream, "isatty", lambda: False)())
+
+
+def log(level: str, *args: object, file: TextIO | None = None) -> None:
+    stream = sys.stdout if file is None else file
+    tag = f"[{level}]"
+    color = LOG_COLORS.get(level)
+    if color and color_enabled(stream):
+        tag = f"{color}{tag}{RESET_COLOR}"
+    print(tag, *args, file=stream)
+
+
 def info(*args: object) -> None:
-    print("[INFO]", *args)
+    log("INFO", *args)
 
 
 def warn(*args: object) -> None:
-    print("[WARN]", *args)
+    log("WARN", *args)
 
 
 def error(*args: object) -> None:
-    print("[ERROR]", *args, file=sys.stderr)
+    log("ERROR", *args, file=sys.stderr)
 
 
 def write_file_atomic(path: Path, data: bytes) -> None:

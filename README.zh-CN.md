@@ -64,7 +64,8 @@ uv run isaac-online-modded --restore
 关闭，因为该补丁可能导致游戏无法启动；`--revert-experimental-lua-api` 只撤销
 该补丁。
 
-日志输出带有 `[INFO]`、`[WARN]`、`[ERROR]` 前缀，错误写入 stderr。
+日志输出带有 `[INFO]`、`[WARN]`、`[ERROR]` 前缀，错误写入 stderr。交互式
+终端中标签会着色，可通过 `NO_COLOR=1` 关闭，或用 `FORCE_COLOR=1` 强制开启。
 `--status` 与 `--print-path` 保持纯数据输出，便于脚本解析。
 
 写入前会自动创建备份，例如 `isaac-ng.exe.bak`、`main.lua.bak` 和

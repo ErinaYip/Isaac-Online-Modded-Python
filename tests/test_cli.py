@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from isaac_online_modded import cli
+from isaac_online_modded import cli, common
 
 EID_API_CONTENT = (
     "local function demo()\n"
@@ -110,6 +112,29 @@ def eid_api_path(game_dir: Path) -> Path:
 
 def music_main_path(game_dir: Path) -> Path:
     return game_dir / "mods" / "Antibirth Music+++" / "main.lua"
+
+
+class LogFormatTest(unittest.TestCase):
+    def test_no_color_for_non_tty(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            common.info("hello")
+        self.assertEqual(output.getvalue(), "[INFO] hello\n")
+
+    def test_force_color_adds_ansi(self) -> None:
+        output = io.StringIO()
+        with mock.patch.dict(os.environ, {"FORCE_COLOR": "1"}, clear=False):
+            with contextlib.redirect_stdout(output):
+                common.warn("careful")
+        self.assertIn("\x1b[33m[WARN]\x1b[0m", output.getvalue())
+
+    def test_no_color_wins_over_force_color(self) -> None:
+        output = io.StringIO()
+        environment = {"FORCE_COLOR": "1", "NO_COLOR": "1"}
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with contextlib.redirect_stdout(output):
+                common.info("plain")
+        self.assertEqual(output.getvalue(), "[INFO] plain\n")
 
 
 class BinaryPatchTest(unittest.TestCase):

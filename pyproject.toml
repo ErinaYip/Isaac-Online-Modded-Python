@@ -22,8 +22,8 @@ classifiers = [
 ]
 
 [project.urls]
-Author = "https://codeberg.org/erina"
-Homepage = "https://codeberg.org/erina"
+Author = "https://github.com/ErinaYip"
+Homepage = "https://github.com/ErinaYip"
 
 [project.scripts]
 isaac-online-modded = "isaac_online_modded.cli:main_entry"
