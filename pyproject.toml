@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "isaac-online-modded-linux"
-version = "1.0.1"
+version = "1.1.0"
 description = "Standalone Linux CLI patcher for enabling mods in The Binding of Isaac online co-op"
 readme = "README.md"
 requires-python = ">=3.11"

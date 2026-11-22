@@ -1,700 +1,195 @@
-"""
-Linux-native CLI for Isaac Online Modded.
-
-This is the standalone Linux project: no WPF, no .csproj, no Windows publish
-profiles.  It mirrors the original patching logic with only Python's standard
-library so it can be packaged and run as a normal Linux/uv command.
-"""
+"""Command line entry point for the Linux Isaac Online Modded patcher."""
 
 from __future__ import annotations
 
 import argparse
-import importlib.resources
-import os
-import re
-import shutil
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-
-GAME_DIR_NAME = "The Binding of Isaac Rebirth"
-GAME_EXE_NAME = "isaac-ng.exe"
-DEFAULT_BACKUP_SUFFIX = ".bak"
-LUA_RUNTIME_RESOURCE = "repentance_plus_main.lua"
-
-
-class PatchError(RuntimeError):
-    pass
-
-
-class EIDNotFoundError(PatchError):
-    pass
-
-
-@dataclass(frozen=True)
-class BinaryPatch:
-    name: str
-    pattern: bytes
-    already_patched_pattern: bytes
-    replacements: tuple[tuple[int, int], ...]
-
-
-BINARY_PATCHES = (
-    BinaryPatch(
-        name="online co-op mod gate",
-        pattern=bytes(
-            [
-                0x83,
-                0xE8,
-                0x02,
-                0x74,
-                0x2A,
-                0x83,
-                0xE8,
-                0x01,
-                0x74,
-                0x1E,
-                0x83,
-                0xE8,
-                0x01,
-                0x74,
-                0x12,
-                0x32,
-                0xC0,
-                0x8B,
-                0x4D,
-                0xF4,
-                0x64,
-                0x89,
-                0x0D,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ]
-        ),
-        already_patched_pattern=bytes(
-            [
-                0x83,
-                0xE8,
-                0x02,
-                0x90,
-                0x90,
-                0x83,
-                0xE8,
-                0x01,
-                0x90,
-                0x90,
-                0x83,
-                0xE8,
-                0x01,
-                0x90,
-                0x90,
-                0x32,
-                0xC0,
-                0x8B,
-                0x4D,
-                0xF4,
-                0x64,
-                0x89,
-                0x0D,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ]
-        ),
-        replacements=(
-            (3, 0x90),
-            (4, 0x90),
-            (8, 0x90),
-            (9, 0x90),
-            (13, 0x90),
-            (14, 0x90),
-        ),
-    ),
-    BinaryPatch(
-        name="desync analytics sender",
-        pattern=bytes(
-            [0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x53, 0x56, 0x57, 0xFF, 0x15]
-        ),
-        already_patched_pattern=bytes(
-            [0xC3, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x53, 0x56, 0x57, 0xFF, 0x15]
-        ),
-        replacements=((0, 0xC3),),
-    ),
+from .antibirth import (
+    ANTIBIRTH_FIXED_SEED,
+    ANTIBIRTH_PATCH_MARKER,
+    find_antibirth_music_dir,
+    patch_antibirth_music,
 )
-
-EXPERIMENTAL_LUA_API_PATCH = BinaryPatch(
-    name="Lua mod API in Repentance+",
-    pattern=bytes(
-        [
-            0x8A,
-            0x45,
-            0x08,  # mov al, byte ptr [ebp+8]
-            0x8B,
-            0xCE,
-            0x88,
-            0x46,
-            0x1C,  # mov byte ptr [esi+0x1c], al
-            0xE8,
-            0x0C,
-            0x63,
-            0x00,
-            0x00,  # call Lua API registration
-            0x68,
-            0x54,
-            0xED,
-            0xB6,
-            0x00,
-        ]
-    ),
-    already_patched_pattern=bytes(
-        [
-            0xB0,
-            0x01,
-            0x90,  # mov al, 1; nop
-            0x8B,
-            0xCE,
-            0x88,
-            0x46,
-            0x1C,
-            0xE8,
-            0x0C,
-            0x63,
-            0x00,
-            0x00,
-            0x68,
-            0x54,
-            0xED,
-            0xB6,
-            0x00,
-        ]
-    ),
-    replacements=((0, 0xB0), (1, 0x01), (2, 0x90)),
+from .common import (
+    AntibirthMusicNotFoundError,
+    BinaryPatch,
+    DEFAULT_BACKUP_SUFFIX,
+    EIDNotFoundError,
+    ModNotFoundError,
+    PatchError,
+    PatchStatus,
+    STATUS_LABELS,
+    apply_binary_patch,
+    backup_once,
+    binary_patch_status,
+    combine_status,
+    eprint,
+    grouped_patch_status,
+    restore_backup,
+    write_file_atomic,
 )
-
-
-OLD_EID_PATCHES = (
-    (
-        "if EID.isOnlineMultiplayer and Game():GetLevel():GetStage() >= LevelStage.Home then",
-        "return listUpdatedForPlayers -- Calling player:HasCollectible can cause a crash after beating The Beast in R+ Coop",
-        "end",
-        "",
-    ),
-    (
-        "local stage = Game():GetLevel():GetStage()",
-        "if stage == nil then",
-        "return listUpdatedForPlayers",
-        "end",
-        "if EID.isOnlineMultiplayer and (stage >= 13 or stage < 1) then",
-        "return listUpdatedForPlayers -- Calling player:HasCollectible can cause a crash after beating The Beast in R+ Coop",
-        "end",
-        "",
-    ),
+from .eid import (
+    EID_ANCHOR,
+    EID_MARKER,
+    eid_api_status,
+    eid_has_stage_guard,
+    find_eid_dir,
+    patch_external_item_descriptions,
 )
-
-NEW_EID_BLOCK = (
-    "\t\t",
-    "\t\tlocal stage = Game():GetLevel():GetStage()",
-    "\t\tif stage == nil then",
-    "\t\t\treturn listUpdatedForPlayers",
-    "\t\tend",
-    "\t\tif (stage >= 13 or stage < 1) then",
-    "\t\t\treturn listUpdatedForPlayers -- Calling player:HasCollectible can cause a crash after beating The Beast in R+ Coop",
-    "\t\tend",
+from .game import (
+    ANALYTICS_PATCH,
+    BINARY_PATCHES,
+    COOP_CHARACTERS_PATCHES,
+    COOP_MODS_PATCH,
+    EXPERIMENTAL_LUA_API_PATCH,
+    MAP_INPUT_PATCHES,
+    patch_game_executable,
+    revert_binary_patch,
 )
-
-
-def eprint(*args: object) -> None:
-    print(*args, file=sys.stderr)
-
-
-def expand_path(value: str) -> Path:
-    return Path(os.path.expandvars(os.path.expanduser(value)))
-
-
-def unique_paths(paths: Iterable[Path]) -> list[Path]:
-    seen: set[str] = set()
-    result: list[Path] = []
-    for path in paths:
-        key = str(path)
-        if key not in seen:
-            seen.add(key)
-            result.append(path)
-    return result
-
-
-def steam_roots() -> list[Path]:
-    home = Path.home()
-    candidates = [
-        os.environ.get("STEAM_ROOT"),
-        os.environ.get("STEAM_DIR"),
-        os.environ.get("STEAM_COMPAT_CLIENT_INSTALL_PATH"),
-    ]
-    paths = [expand_path(p) for p in candidates if p]
-    paths.extend(
-        [
-            home / ".local/share/Steam",
-            home / ".steam/steam",
-            home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
-        ]
-    )
-    return unique_paths(paths)
-
-
-def unescape_vdf_path(value: str) -> str:
-    return value.replace("\\\\", "\\").replace('\\"', '"')
-
-
-def steam_library_roots(steam_root: Path) -> list[Path]:
-    paths = [steam_root]
-    vdf_path = steam_root / "steamapps/libraryfolders.vdf"
-    if not vdf_path.exists():
-        return unique_paths(paths)
-
-    text = vdf_path.read_text(encoding="utf-8", errors="replace")
-
-    for raw in re.findall(r'"path"\s+"((?:\\.|[^"\\])*)"', text):
-        paths.append(expand_path(unescape_vdf_path(raw)))
-
-    # Old libraryfolders.vdf format used numeric keys directly as paths.
-    for raw in re.findall(r'"\d+"\s+"((?:\\.|[^"\\])*)"', text):
-        candidate = unescape_vdf_path(raw)
-        if candidate.startswith(("/", "~", "$")):
-            paths.append(expand_path(candidate))
-
-    return unique_paths(paths)
-
-
-def candidate_game_dirs() -> list[Path]:
-    paths: list[Path] = []
-    env_game_dir = os.environ.get("ISAAC_GAME_DIR")
-    if env_game_dir:
-        paths.append(expand_path(env_game_dir))
-
-    for steam_root in steam_roots():
-        for library_root in steam_library_roots(steam_root):
-            paths.append(library_root / "steamapps/common" / GAME_DIR_NAME)
-
-    return unique_paths(paths)
-
-
-def detect_game_exe(args: argparse.Namespace) -> Path:
-    if args.game_exe:
-        return expand_path(args.game_exe)
-
-    if args.game_dir:
-        return expand_path(args.game_dir) / GAME_EXE_NAME
-
-    if args.path:
-        path = expand_path(args.path)
-        if path.name.lower() == GAME_EXE_NAME or (path.exists() and path.is_file()):
-            return path
-        return path / GAME_EXE_NAME
-
-    env_game_exe = os.environ.get("ISAAC_GAME_EXE")
-    if env_game_exe:
-        return expand_path(env_game_exe)
-
-    for game_dir in candidate_game_dirs():
-        exe = game_dir / GAME_EXE_NAME
-        if exe.exists():
-            return exe
-
-    return (
-        Path.home()
-        / ".local/share/Steam/steamapps/common"
-        / GAME_DIR_NAME
-        / GAME_EXE_NAME
-    )
-
-
-def backup_once(path: Path, suffix: str, dry_run: bool) -> Path:
-    if not suffix:
-        raise PatchError("Backup suffix must not be empty")
-
-    backup_path = path.with_name(path.name + suffix)
-    if backup_path.exists():
-        print(f"Using existing backup: {backup_path}")
-        return backup_path
-
-    if dry_run:
-        print(f"Would create backup: {backup_path}")
-    else:
-        shutil.copy2(path, backup_path)
-        print(f"Created backup: {backup_path}")
-
-    return backup_path
-
-
-def restore_backup(game_exe: Path, suffix: str, dry_run: bool) -> None:
-    backup_path = game_exe.with_name(game_exe.name + suffix)
-    if not backup_path.exists():
-        raise PatchError(f"Backup not found: {backup_path}")
-
-    if dry_run:
-        print(f"Would restore {game_exe} from {backup_path}")
-        return
-
-    shutil.copy2(backup_path, game_exe)
-    print(f"Restored: {game_exe}")
-
-
-def selected_binary_patches(
-    include_experimental_lua_api: bool,
-) -> tuple[BinaryPatch, ...]:
-    if include_experimental_lua_api:
-        return BINARY_PATCHES + (EXPERIMENTAL_LUA_API_PATCH,)
-    return BINARY_PATCHES
-
-
-def patch_game_executable(
-    game_exe: Path,
-    suffix: str,
-    dry_run: bool,
-    include_experimental_lua_api: bool = False,
-) -> bool:
-    if not game_exe.exists():
-        searched = "\n  ".join(str(p / GAME_EXE_NAME) for p in candidate_game_dirs())
-        raise PatchError(
-            f"Game executable not found: {game_exe}\n"
-            f"Pass --game-exe/--game-dir, set ISAAC_GAME_EXE/ISAAC_GAME_DIR, or install Steam in the default path.\n"
-            f"Searched candidates:\n  {searched}"
-        )
-    if not game_exe.is_file():
-        raise PatchError(f"Game executable is not a file: {game_exe}")
-
-    original = game_exe.read_bytes()
-    patched = bytearray(original)
-    changed = False
-
-    for patch in selected_binary_patches(include_experimental_lua_api):
-        index = original.find(patch.pattern)
-        if index != -1:
-            changed = True
-            for offset, value in patch.replacements:
-                patched[index + offset] = value
-            print(f"Will patch {patch.name} at offset 0x{index:x}")
-            continue
-
-        already_index = original.find(patch.already_patched_pattern)
-        if already_index != -1:
-            print(f"Already patched: {patch.name} at offset 0x{already_index:x}")
-            continue
-
-        raise PatchError(
-            f"Pattern for {patch.name!r} not found. The game may have updated and this patcher may be outdated."
-        )
-
-    if not changed:
-        print("Game executable already patched.")
-        return False
-
-    backup_once(game_exe, suffix, dry_run)
-    if dry_run:
-        print(f"Would write patched executable: {game_exe}")
-    else:
-        game_exe.write_bytes(patched)
-        print(f"Patched executable: {game_exe}")
-    return True
-
-
-def revert_binary_patch(
-    game_exe: Path, patch: BinaryPatch, suffix: str, dry_run: bool
-) -> bool:
-    if not game_exe.exists():
-        raise PatchError(f"Game executable not found: {game_exe}")
-    if not game_exe.is_file():
-        raise PatchError(f"Game executable is not a file: {game_exe}")
-
-    original = game_exe.read_bytes()
-    patched_count = original.count(patch.already_patched_pattern)
-    original_count = original.count(patch.pattern)
-
-    if patched_count == 0:
-        if original_count:
-            print(f"Not applied: {patch.name}; original bytes already present.")
-            return False
-        raise PatchError(
-            f"Neither patched nor original pattern for {patch.name!r} was found."
-        )
-    if patched_count != 1:
-        raise PatchError(
-            f"Expected exactly one patched pattern for {patch.name!r}, found {patched_count}."
-        )
-
-    index = original.find(patch.already_patched_pattern)
-    print(f"Will revert {patch.name} at offset 0x{index:x}")
-    backup_once(game_exe, suffix, dry_run)
-    if dry_run:
-        print(f"Would write reverted executable: {game_exe}")
-    else:
-        game_exe.write_bytes(
-            original.replace(patch.already_patched_pattern, patch.pattern, 1)
-        )
-        print(f"Reverted {patch.name}: {game_exe}")
-    return True
-
-
-def bundled_lua_runtime() -> str:
-    return (
-        importlib.resources.files("isaac_online_modded")
-        .joinpath("resources", LUA_RUNTIME_RESOURCE)
-        .read_text(encoding="utf-8")
-    )
-
-
-def lua_runtime_is_usable(text: str) -> bool:
-    return (
-        "function RegisterMod" in text
-        and "Game = Game_0" in text
-        and "function _RunCallback" in text
-    )
-
-
-def patch_lua_runtime(game_exe: Path, suffix: str, dry_run: bool) -> bool:
-    scripts_dir = game_exe.parent / "resources" / "scripts"
-    if not scripts_dir.exists():
-        raise PatchError(f"Lua scripts directory not found: {scripts_dir}")
-    if not scripts_dir.is_dir():
-        raise PatchError(f"Lua scripts path is not a directory: {scripts_dir}")
-
-    target = scripts_dir / "main.lua"
-    runtime = bundled_lua_runtime()
-    if not lua_runtime_is_usable(runtime):
-        raise PatchError(f"Bundled Lua runtime is incomplete: {LUA_RUNTIME_RESOURCE}")
-
-    if target.exists():
-        current = target.read_text(encoding="utf-8", errors="replace")
-        if current == runtime:
-            print(f"Lua runtime already installed: {target}")
-            return False
-        if lua_runtime_is_usable(current):
-            print(f"Existing Lua runtime looks usable; leaving unchanged: {target}")
-            return False
-        backup_once(target, suffix, dry_run)
-        if dry_run:
-            print(f"Would replace incomplete Lua runtime: {target}")
-        else:
-            target.write_text(runtime, encoding="utf-8")
-            print(f"Replaced incomplete Lua runtime: {target}")
-        return True
-
-    if dry_run:
-        print(f"Would install Lua runtime: {target}")
-    else:
-        target.write_text(runtime, encoding="utf-8")
-        print(f"Installed Lua runtime: {target}")
-    return True
-
-
-def read_lines(path: Path) -> list[str]:
-    return path.read_text(encoding="utf-8", errors="replace").splitlines()
-
-
-def write_lines(path: Path, lines: list[str]) -> None:
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def remove_old_eid_patches(lines: list[str]) -> tuple[list[str], bool]:
-    changed = False
-    result = list(lines)
-
-    for old_patch in OLD_EID_PATCHES:
-        for start in range(0, len(result)):
-            if old_patch[0] not in result[start]:
-                continue
-            end = start + len(old_patch)
-            if end > len(result):
-                continue
-            if all(old_patch[i] in result[start + i] for i in range(1, len(old_patch))):
-                del result[start:end]
-                changed = True
-                break
-
-    return result, changed
-
-
-def has_new_eid_patch(lines: list[str]) -> bool:
-    checks = (
-        "if stage == nil then",
-        "return listUpdatedForPlayers",
-        "end",
-        "if (stage >= 13 or stage < 1) then",
-        "return listUpdatedForPlayers",
-        "end",
-    )
-    for index, line in enumerate(lines):
-        if "local stage = Game():GetLevel():GetStage()" not in line:
-            continue
-        if index + len(checks) >= len(lines):
-            continue
-        if all(
-            check in lines[index + 1 + offset] for offset, check in enumerate(checks)
-        ):
-            return True
-    return False
-
-
-def patch_eid_main_lua(main_lua: Path) -> tuple[list[str], bool]:
-    lines = read_lines(main_lua)
-    marker = "EID.isMultiplayer = false -- Used to color P1's highlight/outline indicators (single player just uses white)"
-    patched_marker = "EID.isMultiplayer = true -- Used to color P1's highlight/outline indicators (single player just uses white)"
-
-    if any(patched_marker in line for line in lines):
-        return lines, False
-
-    changed = False
-    new_lines: list[str] = []
-    for line in lines:
-        if marker in line:
-            new_lines.append(
-                line.replace("EID.isMultiplayer = false", "EID.isMultiplayer = true")
-            )
-            changed = True
-        else:
-            new_lines.append(line)
-
-    if not changed:
-        raise PatchError(f"Could not find EID.isMultiplayer setting in {main_lua}")
-
-    return new_lines, True
-
-
-def patch_eid_api_lua(eid_api: Path) -> tuple[list[str], bool]:
-    original_lines = read_lines(eid_api)
-    lines, removed_old_patch = remove_old_eid_patches(original_lines)
-
-    if has_new_eid_patch(lines):
-        return lines, removed_old_patch
-
-    try:
-        anchor = next(
-            index
-            for index, line in enumerate(lines)
-            if "return listUpdatedForPlayers -- dont evaluate when bad data is present"
-            in line
-        )
-    except StopIteration as exc:
-        raise PatchError(f"Could not find EID patch anchor in {eid_api}") from exc
-
-    insert_at = min(anchor + 2, len(lines))
-    lines[insert_at:insert_at] = list(NEW_EID_BLOCK)
-    return lines, True
-
-
-def find_eid_dir(mods_dir: Path) -> Path:
-    if not mods_dir.exists():
-        raise EIDNotFoundError(f"Mods directory not found: {mods_dir}")
-    if not mods_dir.is_dir():
-        raise PatchError(f"Mods path is not a directory: {mods_dir}")
-
-    matches = [
-        path
-        for path in mods_dir.iterdir()
-        if path.is_dir()
-        and "external" in path.name.lower()
-        and "item" in path.name.lower()
-        and "descriptions" in path.name.lower()
-    ]
-    if not matches:
-        raise EIDNotFoundError(f"External Item Descriptions not found in: {mods_dir}")
-    return sorted(matches)[0]
-
-
-def patch_external_item_descriptions(
-    game_exe: Path, mods_dir_arg: str | None, suffix: str, dry_run: bool
-) -> bool:
-    mods_dir = expand_path(mods_dir_arg) if mods_dir_arg else game_exe.parent / "mods"
-    eid_dir = find_eid_dir(mods_dir)
-    print(f"Using EID mod directory: {eid_dir}")
-
-    main_lua = eid_dir / "main.lua"
-    eid_api = eid_dir / "features/eid_api.lua"
-    for required in (main_lua, eid_api):
-        if not required.exists():
-            raise PatchError(f"Required EID file not found: {required}")
-
-    changed_any = False
-
-    new_main_lines, main_changed = patch_eid_main_lua(main_lua)
-    if main_changed:
-        changed_any = True
-        backup_once(main_lua, suffix, dry_run)
-        if dry_run:
-            print(f"Would patch: {main_lua}")
-        else:
-            write_lines(main_lua, new_main_lines)
-            print(f"Patched: {main_lua}")
-    else:
-        print(f"Already patched: {main_lua}")
-
-    new_api_lines, api_changed = patch_eid_api_lua(eid_api)
-    if api_changed:
-        changed_any = True
-        backup_once(eid_api, suffix, dry_run)
-        if dry_run:
-            print(f"Would patch: {eid_api}")
-        else:
-            write_lines(eid_api, new_api_lines)
-            print(f"Patched: {eid_api}")
-    else:
-        print(f"Already patched: {eid_api}")
-
-    if not changed_any:
-        print("External Item Descriptions already patched.")
-    return changed_any
-
-
-def try_patch_external_item_descriptions(
-    game_exe: Path, mods_dir_arg: str | None, suffix: str, dry_run: bool
-) -> bool:
-    try:
-        return patch_external_item_descriptions(game_exe, mods_dir_arg, suffix, dry_run)
-    except EIDNotFoundError as exc:
-        print(f"External Item Descriptions not installed; skipping. {exc}")
-        return False
+from .locator import (
+    GAME_DIR_NAME,
+    GAME_EXE_NAME,
+    candidate_game_dirs,
+    detect_game_exe,
+    resolve_mods_dir,
+)
+from .lua import LuaDocument
+from .runtime import (
+    LUA_RUNTIME_RESOURCE,
+    bundled_lua_runtime,
+    lua_runtime_is_usable,
+    lua_runtime_status,
+    patch_lua_runtime,
+)
+from .status import print_status
+
+
+__all__ = [
+    "ANALYTICS_PATCH",
+    "ANTIBIRTH_FIXED_SEED",
+    "ANTIBIRTH_PATCH_MARKER",
+    "AntibirthMusicNotFoundError",
+    "BINARY_PATCHES",
+    "BinaryPatch",
+    "COOP_CHARACTERS_PATCHES",
+    "COOP_MODS_PATCH",
+    "DEFAULT_BACKUP_SUFFIX",
+    "EIDNotFoundError",
+    "EID_ANCHOR",
+    "EID_MARKER",
+    "EXPERIMENTAL_LUA_API_PATCH",
+    "GAME_DIR_NAME",
+    "GAME_EXE_NAME",
+    "LUA_RUNTIME_RESOURCE",
+    "LuaDocument",
+    "MAP_INPUT_PATCHES",
+    "ModNotFoundError",
+    "PatchError",
+    "PatchStatus",
+    "STATUS_LABELS",
+    "apply_binary_patch",
+    "backup_once",
+    "binary_patch_status",
+    "bundled_lua_runtime",
+    "candidate_game_dirs",
+    "combine_status",
+    "detect_game_exe",
+    "eid_api_status",
+    "eid_has_stage_guard",
+    "eprint",
+    "find_antibirth_music_dir",
+    "find_eid_dir",
+    "grouped_patch_status",
+    "lua_runtime_is_usable",
+    "lua_runtime_status",
+    "main",
+    "main_entry",
+    "parse_args",
+    "patch_antibirth_music",
+    "patch_external_item_descriptions",
+    "patch_game_executable",
+    "patch_lua_runtime",
+    "print_status",
+    "resolve_mods_dir",
+    "restore_backup",
+    "revert_binary_patch",
+    "write_file_atomic",
+]
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Patch The Binding of Isaac: Rebirth to allow mods in online co-op on Linux.",
+        description=(
+            "Patch The Binding of Isaac: Rebirth to allow mods in online co-op "
+            "on Linux."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "path",
         nargs="?",
-        help=f"Optional game executable or game directory. Directories are resolved to {GAME_EXE_NAME}.",
+        help=(
+            "Optional game executable or game directory. Directories are "
+            f"resolved to {GAME_EXE_NAME}."
+        ),
     )
     parser.add_argument("--game-exe", help=f"Path to {GAME_EXE_NAME}.")
     parser.add_argument("--game-dir", help=f"Path to '{GAME_DIR_NAME}'.")
     parser.add_argument(
         "--mods-dir",
-        help="Path to the Isaac mods directory for EID auto-patching/--patch-eid/--all.",
+        help="Path to the Isaac mods directory for EID/Antibirth Music+++ auto-patching.",
     )
     parser.add_argument(
         "--patch-game", action="store_true", help="Patch the game executable."
     )
     parser.add_argument(
+        "--patch-coop-characters",
+        action="store_true",
+        help=(
+            "Patch the game so modded characters can be selected in online co-op. "
+            "Requires the co-op mods patch."
+        ),
+    )
+    parser.add_argument(
         "--patch-lua-runtime",
         action="store_true",
-        help="Install resources/scripts/main.lua so RegisterMod/Game/_RunCallback exist for Lua mods.",
+        help=(
+            "Install resources/scripts/main.lua so RegisterMod/Game/_RunCallback "
+            "exist for Lua mods."
+        ),
     )
     parser.add_argument(
         "--patch-eid",
         action="store_true",
-        help="Patch External Item Descriptions for co-op.",
+        help=(
+            "Patch External Item Descriptions for co-op (including the online map "
+            "button fix)."
+        ),
     )
     parser.add_argument(
-        "--all", action="store_true", help="Patch both the game executable and EID."
+        "--patch-antibirth-music",
+        action="store_true",
+        help="Patch Antibirth Music+++ so its music RNG does not desync online co-op.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "Patch the game executable (including co-op characters), Lua runtime, "
+            "EID, and the installed Antibirth Music+++."
+        ),
     )
     parser.add_argument(
         "--no-eid",
         action="store_true",
         help="Do not auto-patch External Item Descriptions in the default mode.",
+    )
+    parser.add_argument(
+        "--no-antibirth-music",
+        action="store_true",
+        help="Do not auto-patch Antibirth Music+++ in the default mode.",
     )
     parser.add_argument(
         "--no-lua-runtime",
@@ -706,18 +201,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Also apply the experimental Repentance+ Lua API patch. "
-            "This is disabled by default because the current candidate patch can prevent the game from starting."
+            "This is disabled by default because the current candidate patch can "
+            "prevent the game from starting."
         ),
     )
     parser.add_argument(
         "--revert-experimental-lua-api",
         action="store_true",
-        help="Revert only the experimental Lua API patch without restoring the whole executable backup.",
+        help=(
+            "Revert only the experimental Lua API patch without restoring the "
+            "whole executable backup."
+        ),
     )
     parser.add_argument(
         "--restore",
         action="store_true",
         help="Restore the game executable from its backup and exit.",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print the patch status of the game and installed mods, then exit.",
     )
     parser.add_argument(
         "--dry-run",
@@ -736,50 +240,67 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     args = parser.parse_args(argv)
 
+    patch_actions = (
+        args.patch_game
+        or args.patch_coop_characters
+        or args.patch_lua_runtime
+        or args.patch_eid
+        or args.patch_antibirth_music
+        or args.all
+    )
+
     explicit_path_options = sum(
         bool(v) for v in (args.path, args.game_exe, args.game_dir)
     )
     if explicit_path_options > 1:
         parser.error("Use only one of positional path, --game-exe, or --game-dir.")
-    if args.restore and (
-        args.patch_game
-        or args.patch_lua_runtime
-        or args.patch_eid
-        or args.all
-        or args.revert_experimental_lua_api
-    ):
+    if args.restore and (patch_actions or args.revert_experimental_lua_api):
         parser.error("--restore cannot be combined with patch actions.")
-    if args.revert_experimental_lua_api and (
-        args.patch_game or args.patch_lua_runtime or args.patch_eid or args.all
-    ):
+    if args.revert_experimental_lua_api and patch_actions:
         parser.error(
             "--revert-experimental-lua-api cannot be combined with patch actions."
         )
+    if args.status and (
+        patch_actions or args.restore or args.revert_experimental_lua_api
+    ):
+        parser.error("--status cannot be combined with patch actions.")
     if args.no_eid and (args.patch_eid or args.all):
         parser.error("--no-eid cannot be combined with --patch-eid or --all.")
+    if args.no_antibirth_music and args.patch_antibirth_music:
+        parser.error(
+            "--no-antibirth-music cannot be combined with --patch-antibirth-music."
+        )
     if args.no_lua_runtime and (args.patch_lua_runtime or args.all):
         parser.error(
             "--no-lua-runtime cannot be combined with --patch-lua-runtime or --all."
-        )
-    if (
-        args.experimental_lua_api
-        and args.patch_eid
-        and not (args.patch_game or args.all)
-    ):
-        parser.error(
-            "--experimental-lua-api only applies when patching the game executable."
         )
 
     return args
 
 
+def resolve_mods(
+    mods_dir: Path, finder, optional: bool, name: str
+) -> Path | None:
+    try:
+        return finder(mods_dir)
+    except ModNotFoundError as exc:
+        if not optional:
+            raise
+        print(f"{name} not installed; skipping. {exc}")
+        return None
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     game_exe = detect_game_exe(args)
+    mods_dir = resolve_mods_dir(game_exe, args.mods_dir)
 
     if args.print_path:
         print(game_exe)
         return 0
+
+    if args.status:
+        return print_status(game_exe, mods_dir)
 
     if args.restore:
         restore_backup(game_exe, args.backup_suffix, args.dry_run)
@@ -791,33 +312,64 @@ def main(argv: list[str]) -> int:
         return 0
 
     explicit_action = (
-        args.patch_game or args.patch_lua_runtime or args.patch_eid or args.all
+        args.patch_game
+        or args.patch_coop_characters
+        or args.patch_lua_runtime
+        or args.patch_eid
+        or args.patch_antibirth_music
+        or args.all
     )
     patch_game = args.patch_game or args.all
+    patch_coop_characters = args.patch_coop_characters or args.all
     patch_runtime = args.patch_lua_runtime or args.all
     patch_eid = args.patch_eid or args.all
+    patch_music = args.patch_antibirth_music or (
+        args.all and not args.no_antibirth_music
+    )
     eid_optional = False
+    music_optional = args.all
     if not explicit_action:
         patch_game = True
         patch_runtime = not args.no_lua_runtime
         patch_eid = not args.no_eid
+        patch_music = not args.no_antibirth_music
         eid_optional = patch_eid
+        music_optional = True
 
-    if patch_game:
+    eid_dir: Path | None = None
+    if patch_eid:
+        eid_dir = resolve_mods(
+            mods_dir, find_eid_dir, eid_optional, "External Item Descriptions"
+        )
+
+    music_dir: Path | None = None
+    if patch_music:
+        music_dir = resolve_mods(
+            mods_dir, find_antibirth_music_dir, music_optional, "Antibirth Music+++"
+        )
+
+    exe_patch_selected = (
+        patch_game
+        or patch_coop_characters
+        or eid_dir is not None
+        or args.experimental_lua_api
+    )
+    if exe_patch_selected:
         patch_game_executable(
-            game_exe, args.backup_suffix, args.dry_run, args.experimental_lua_api
+            game_exe,
+            args.backup_suffix,
+            args.dry_run,
+            patch_coop=patch_game,
+            patch_coop_characters=patch_coop_characters,
+            patch_map_input=eid_dir is not None,
+            patch_experimental_lua_api=args.experimental_lua_api,
         )
     if patch_runtime:
         patch_lua_runtime(game_exe, args.backup_suffix, args.dry_run)
-    if patch_eid:
-        if eid_optional:
-            try_patch_external_item_descriptions(
-                game_exe, args.mods_dir, args.backup_suffix, args.dry_run
-            )
-        else:
-            patch_external_item_descriptions(
-                game_exe, args.mods_dir, args.backup_suffix, args.dry_run
-            )
+    if eid_dir is not None:
+        patch_external_item_descriptions(eid_dir, args.backup_suffix, args.dry_run)
+    if music_dir is not None:
+        patch_antibirth_music(music_dir, args.backup_suffix, args.dry_run)
 
     return 0
 
