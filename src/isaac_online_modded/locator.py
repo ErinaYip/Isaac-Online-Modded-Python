@@ -8,7 +8,6 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-
 GAME_DIR_NAME = "The Binding of Isaac Rebirth"
 GAME_EXE_NAME = "isaac-ng.exe"
 

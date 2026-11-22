@@ -65,7 +65,6 @@ from .runtime import (
 )
 from .status import print_status
 
-
 __all__ = [
     "ANALYTICS_PATCH",
     "ANTIBIRTH_FIXED_SEED",
@@ -278,9 +277,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def resolve_mods(
-    mods_dir: Path, finder, optional: bool, name: str
-) -> Path | None:
+def resolve_mods(mods_dir: Path, finder, optional: bool, name: str) -> Path | None:
     try:
         return finder(mods_dir)
     except ModNotFoundError as exc:

@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-
 DEFAULT_BACKUP_SUFFIX = ".bak"
 
 
@@ -116,9 +115,7 @@ def restore_backup(path: Path, suffix: str, dry_run: bool) -> None:
     print(f"Restored: {path}")
 
 
-def binary_patch_status(
-    body: bytes | bytearray, patch: BinaryPatch
-) -> PatchStatus:
+def binary_patch_status(body: bytes | bytearray, patch: BinaryPatch) -> PatchStatus:
     original_count = body.count(patch.original)
     patched_count = body.count(patch.patched)
     if original_count == 0 and patched_count == 1:

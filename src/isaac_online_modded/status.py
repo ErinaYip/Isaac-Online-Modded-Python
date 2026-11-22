@@ -65,9 +65,7 @@ def print_status(game_exe: Path, mods_dir: Path) -> int:
     return 0
 
 
-def optional_mod_dir(
-    finder: Callable[[Path], Path], mods_dir: Path
-) -> Path | None:
+def optional_mod_dir(finder: Callable[[Path], Path], mods_dir: Path) -> Path | None:
     try:
         return finder(mods_dir)
     except PatchError:

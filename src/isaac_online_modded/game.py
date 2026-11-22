@@ -17,7 +17,6 @@ from .common import (
 )
 from .locator import GAME_EXE_NAME, candidate_game_dirs
 
-
 COOP_MODS_PATCH = BinaryPatch(
     "online co-op mod gate",
     bytes.fromhex("83E802742A83E801741E83E801741232C08B4DF464890D00000000"),
@@ -58,8 +57,12 @@ COOP_CHARACTERS_PATCHES = (
     ),
     BinaryPatch(
         "co-op character availability",
-        bytes.fromhex("0FB6C1518D04C08D04428D04408D0CC5503BB400E877D0FFFFC3CCCCCCCCCCCC"),
-        bytes.fromhex("83FA127203B001C30FB6C16BC01203C26BC8185181C1503BB400E871D0FFFFC3"),
+        bytes.fromhex(
+            "0FB6C1518D04C08D04428D04408D0CC5503BB400E877D0FFFFC3CCCCCCCCCCCC"
+        ),
+        bytes.fromhex(
+            "83FA127203B001C30FB6C16BC01203C26BC8185181C1503BB400E871D0FFFFC3"
+        ),
     ),
     BinaryPatch(
         "co-op character availability relocation",
@@ -79,8 +82,12 @@ MAP_INPUT_PATCHES = (
     ),
     BinaryPatch(
         "online map input table",
-        bytes.fromhex("000102030405060708090A0B0F0F0C0F0F0F0D0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0E"),
-        bytes.fromhex("000102030405060708090A0BFF0F0CFFFFFF0DFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0E"),
+        bytes.fromhex(
+            "000102030405060708090A0B0F0F0C0F0F0F0D0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0E"
+        ),
+        bytes.fromhex(
+            "000102030405060708090A0BFF0F0CFFFFFF0DFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0E"
+        ),
     ),
 )
 

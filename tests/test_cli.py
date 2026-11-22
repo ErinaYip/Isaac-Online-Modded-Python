@@ -8,7 +8,6 @@ from pathlib import Path
 
 from isaac_online_modded import cli
 
-
 EID_API_CONTENT = (
     "local function demo()\n"
     "  return listUpdatedForPlayers -- dont evaluate when bad data is present\n"
@@ -97,9 +96,7 @@ def run(argv: list[str]) -> tuple[int, str]:
 
 
 def eid_api_path(game_dir: Path) -> Path:
-    return (
-        game_dir / "mods" / "External Item Descriptions" / "features" / "eid_api.lua"
-    )
+    return game_dir / "mods" / "External Item Descriptions" / "features" / "eid_api.lua"
 
 
 def music_main_path(game_dir: Path) -> Path:
@@ -114,9 +111,7 @@ class BinaryPatchTest(unittest.TestCase):
     def test_ambiguous_pattern_is_unsupported(self) -> None:
         patch = cli.COOP_MODS_PATCH
         body = patch.original + patch.original
-        self.assertIs(
-            cli.binary_patch_status(body, patch), cli.PatchStatus.UNSUPPORTED
-        )
+        self.assertIs(cli.binary_patch_status(body, patch), cli.PatchStatus.UNSUPPORTED)
 
 
 class CLITest(unittest.TestCase):
@@ -151,9 +146,9 @@ class CLITest(unittest.TestCase):
                 (game_dir / f"{cli.GAME_EXE_NAME}.bak").read_bytes(), original
             )
 
-            runtime_text = (
-                game_dir / "resources" / "scripts" / "main.lua"
-            ).read_text(encoding="utf-8")
+            runtime_text = (game_dir / "resources" / "scripts" / "main.lua").read_text(
+                encoding="utf-8"
+            )
             self.assertIn("function RegisterMod", runtime_text)
             self.assertIn("Game = Game_0", runtime_text)
 
@@ -161,12 +156,12 @@ class CLITest(unittest.TestCase):
             eid_text = eid_api.read_text(encoding="utf-8")
             self.assertIn(cli.EID_MARKER, eid_text)
             self.assertIn("if stage == nil or stage >= 13 or stage < 1 then", eid_text)
-            self.assertTrue(
-                (eid_api.with_name("eid_api.lua.bak")).exists()
-            )
+            self.assertTrue((eid_api.with_name("eid_api.lua.bak")).exists())
             # EID main.lua is no longer patched.
             main_lua = game_dir / "mods" / "External Item Descriptions" / "main.lua"
-            self.assertIn("EID.isMultiplayer = false", main_lua.read_text(encoding="utf-8"))
+            self.assertIn(
+                "EID.isMultiplayer = false", main_lua.read_text(encoding="utf-8")
+            )
 
             music_text = music_main_path(game_dir).read_text(encoding="utf-8")
             self.assertIn(cli.ANTIBIRTH_FIXED_SEED, music_text)
@@ -258,7 +253,9 @@ class CLITest(unittest.TestCase):
             for patch in cli.MAP_INPUT_PATCHES:
                 self.assertIn(patch.patched, patched)
             self.assertIn(cli.COOP_MODS_PATCH.original, patched)
-            self.assertIn(cli.EID_MARKER, eid_api_path(game_dir).read_text(encoding="utf-8"))
+            self.assertIn(
+                cli.EID_MARKER, eid_api_path(game_dir).read_text(encoding="utf-8")
+            )
 
     def test_explicit_eid_requires_installation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -283,11 +280,15 @@ class CLITest(unittest.TestCase):
             text = music_main_path(game_dir).read_text(encoding="utf-8")
             self.assertIn(cli.ANTIBIRTH_FIXED_SEED, text)
             self.assertNotIn("local seed = Random()", text)
-            self.assertTrue((music_main_path(game_dir).with_name("main.lua.bak")).exists())
+            self.assertTrue(
+                (music_main_path(game_dir).with_name("main.lua.bak")).exists()
+            )
 
             code, _ = run(["--game-exe", str(exe), "--patch-antibirth-music"])
             self.assertEqual(code, 0)
-            self.assertEqual(music_main_path(game_dir).read_text(encoding="utf-8"), text)
+            self.assertEqual(
+                music_main_path(game_dir).read_text(encoding="utf-8"), text
+            )
 
     def test_explicit_antibirth_music_requires_installation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -329,9 +330,7 @@ class CLITest(unittest.TestCase):
                 ["--game-exe", str(exe), "--no-eid", "--experimental-lua-api"]
             )
             self.assertEqual(code, 0)
-            self.assertIn(
-                cli.EXPERIMENTAL_LUA_API_PATCH.patched, exe.read_bytes()
-            )
+            self.assertIn(cli.EXPERIMENTAL_LUA_API_PATCH.patched, exe.read_bytes())
 
             code, _ = run(["--game-exe", str(exe), "--revert-experimental-lua-api"])
             self.assertEqual(code, 0)
@@ -354,9 +353,9 @@ class CLITest(unittest.TestCase):
                 self.assertIn(patch.original, exe.read_bytes())
             self.assertIn(
                 "EID.isMultiplayer = false",
-                (game_dir / "mods" / "External Item Descriptions" / "main.lua").read_text(
-                    encoding="utf-8"
-                ),
+                (
+                    game_dir / "mods" / "External Item Descriptions" / "main.lua"
+                ).read_text(encoding="utf-8"),
             )
 
     def test_dry_run_does_not_write(self) -> None:
@@ -426,7 +425,9 @@ class EIDPatchTest(unittest.TestCase):
             )
             eid_api.write_text(legacy, encoding="utf-8")
 
-            code, _ = run(["--game-exe", str(game_dir / cli.GAME_EXE_NAME), "--patch-eid"])
+            code, _ = run(
+                ["--game-exe", str(game_dir / cli.GAME_EXE_NAME), "--patch-eid"]
+            )
             self.assertEqual(code, 0)
             self.assertEqual(eid_api.read_text(encoding="utf-8"), legacy)
             self.assertIs(cli.eid_api_status(eid_api), cli.PatchStatus.PATCHED)
@@ -447,11 +448,12 @@ class EIDPatchTest(unittest.TestCase):
             game_dir = make_game_tree(Path(tmp))
             eid_api = eid_api_path(game_dir)
             eid_api.write_bytes(
-                b"\xef\xbb\xbf"
-                + EID_API_CONTENT.replace("\n", "\r\n").encode("utf-8")
+                b"\xef\xbb\xbf" + EID_API_CONTENT.replace("\n", "\r\n").encode("utf-8")
             )
 
-            code, _ = run(["--game-exe", str(game_dir / cli.GAME_EXE_NAME), "--patch-eid"])
+            code, _ = run(
+                ["--game-exe", str(game_dir / cli.GAME_EXE_NAME), "--patch-eid"]
+            )
             self.assertEqual(code, 0)
             data = eid_api.read_bytes()
             self.assertTrue(data.startswith(b"\xef\xbb\xbf"))

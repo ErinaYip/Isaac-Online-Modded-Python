@@ -13,7 +13,6 @@ from .common import (
 )
 from .lua import LuaDocument
 
-
 EID_ANCHOR = "return listUpdatedForPlayers -- dont evaluate when bad data is present"
 EID_MARKER = "-- IsaacOnlineModded: avoid invalid player access after the run ends"
 EID_GUARD = (
@@ -154,9 +153,7 @@ def find_eid_dir(mods_dir: Path) -> Path:
     return sorted(matches)[0]
 
 
-def patch_external_item_descriptions(
-    eid_dir: Path, suffix: str, dry_run: bool
-) -> bool:
+def patch_external_item_descriptions(eid_dir: Path, suffix: str, dry_run: bool) -> bool:
     print(f"Using EID mod directory: {eid_dir}")
     eid_api = eid_dir / "features" / "eid_api.lua"
     if not eid_api.exists():

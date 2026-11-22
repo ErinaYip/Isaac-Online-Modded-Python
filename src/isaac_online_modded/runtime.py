@@ -7,7 +7,6 @@ from pathlib import Path
 
 from .common import PatchError, backup_once, write_file_atomic
 
-
 LUA_RUNTIME_RESOURCE = "repentance_plus_main.lua"
 
 

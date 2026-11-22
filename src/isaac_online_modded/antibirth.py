@@ -13,7 +13,6 @@ from .common import (
 )
 from .lua import LuaDocument
 
-
 ANTIBIRTH_MOD_MARKER = 'RegisterMod("Antibirth Music+++"'
 ANTIBIRTH_PATCH_MARKER = "-- IsaacOnlineModded: Random() advances the synced RNG"
 ANTIBIRTH_FIXED_SEED = (
