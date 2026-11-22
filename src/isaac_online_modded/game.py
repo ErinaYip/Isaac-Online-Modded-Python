@@ -93,7 +93,7 @@ MAP_INPUT_PATCHES = (
     ),
 )
 
-# Linux fork only: this patch is disabled by default because a candidate patch
+# This fork only: this patch is disabled by default because a candidate patch
 # for the current game version can prevent the game from starting.
 EXPERIMENTAL_LUA_API_PATCH = BinaryPatch(
     "Lua mod API in Repentance+",

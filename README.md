@@ -1,15 +1,15 @@
-# Isaac Online Modded Linux
+# Isaac Online Modded Python
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A small Linux/uv version of
+Isaac Online Modded Python is a Python/uv reimplementation of
 [xADDBx/Isaac-Online-Modded](https://github.com/xADDBx/Isaac-Online-Modded).
 
-This fork removes the Windows UI and rewrites the patcher as a Python CLI. It is
-intended for **The Binding of Isaac: Rebirth / Repentance+** on Linux,
-especially Steam/Proton installs.
+It replaces the Windows UI with a Python CLI and targets **The Binding of
+Isaac: Rebirth / Repentance+** on Linux, especially Steam/Proton installs. It
+installs the `isaac-online-modded` command.
 
-## What it does
+## Features
 
 - Patches `isaac-ng.exe` so online co-op can be entered with mods enabled, and
   stops the desync analytics upload.
@@ -21,7 +21,7 @@ especially Steam/Proton installs.
   patch that lets the online map button reach Lua mods.
 - Patches **Antibirth Music+++** so its music RNG does not desync players
   without the mod.
-- Uses pure uv for environment management, running, and builds.
+- Uses uv for environment management, running, and builds.
 
 ## Usage
 
@@ -67,9 +67,9 @@ default run.
 API patch. It is disabled by default because it can prevent the game from
 starting; `--revert-experimental-lua-api` removes only that patch.
 
-Action output is prefixed with `[INFO]`, `[WARN]`, or `[ERROR]`; errors go to
-stderr. `--status` and `--print-path` print plain data without a prefix so the
-output stays script-friendly.
+Output lines are prefixed with `[INFO]`, `[WARN]`, or `[ERROR]`; errors are
+written to stderr. `--status` and `--print-path` print plain data without a
+prefix, so their output stays script-friendly.
 
 Backups are created before writing, for example `isaac-ng.exe.bak`,
 `main.lua.bak`, and `eid_api.lua.bak`. Writes are atomic, so an interrupted run

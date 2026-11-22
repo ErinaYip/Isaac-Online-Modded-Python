@@ -1,4 +1,4 @@
-"""Command line entry point for the Linux Isaac Online Modded patcher."""
+"""Command line entry point for the Isaac Online Modded Python patcher."""
 
 from __future__ import annotations
 

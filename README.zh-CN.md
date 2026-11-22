@@ -1,13 +1,14 @@
-# Isaac Online Modded Linux
+# Isaac Online Modded Python
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是 [xADDBx/Isaac-Online-Modded](https://github.com/xADDBx/Isaac-Online-Modded)
-的 Linux/uv 修改版。
+Isaac Online Modded Python 是
+[xADDBx/Isaac-Online-Modded](https://github.com/xADDBx/Isaac-Online-Modded)
+的 Python/uv 重写版。
 
-本分支去掉了原项目的 Windows UI，并将 patcher 改写为 Python CLI。目标是在
-Linux，尤其是 Steam/Proton 环境下，为 **The Binding of Isaac: Rebirth /
-Repentance+** 提供可直接运行的补丁工具。
+它用 Python CLI 取代了原项目的 Windows UI，目标是在 Linux，尤其是
+Steam/Proton 环境下，为 **The Binding of Isaac: Rebirth / Repentance+**
+提供可直接运行的补丁工具。安装后的命令为 `isaac-online-modded`。
 
 ## 功能
 
@@ -17,10 +18,10 @@ Repentance+** 提供可直接运行的补丁工具。
   联机 mod 补丁）。
 - 安装 Repentance+ Lua runtime shim 到 `resources/scripts/main.lua`，让 Lua mod
   可以使用 `RegisterMod`、`Game()` 和 callbacks 等 API。
-- patch **External Item Descriptions**，使其能在在线联机中工作，同时应用让
+- patch **External Item Descriptions**，使其能在在线联机中工作，同时打上让
   在线地图按键能被 Lua mod 收到的游戏补丁。
 - patch **Antibirth Music+++**，避免其音乐 RNG 让没有安装该 mod 的玩家 desync。
-- 使用纯 uv 管理、运行和构建。
+- 使用 uv 管理环境、运行和构建。
 
 ## 使用
 
@@ -63,8 +64,8 @@ uv run isaac-online-modded --restore
 关闭，因为该补丁可能导致游戏无法启动；`--revert-experimental-lua-api` 只撤销
 该补丁。
 
-操作日志带有 `[INFO]`、`[WARN]`、`[ERROR]` 前缀，错误输出到 stderr。
-`--status` 与 `--print-path` 保持纯数据输出，方便脚本解析。
+日志输出带有 `[INFO]`、`[WARN]`、`[ERROR]` 前缀，错误写入 stderr。
+`--status` 与 `--print-path` 保持纯数据输出，便于脚本解析。
 
 写入前会自动创建备份，例如 `isaac-ng.exe.bak`、`main.lua.bak` 和
 `eid_api.lua.bak`。写入是原子操作，即使运行中断也不会留下被截断的可执行文件。
@@ -80,14 +81,15 @@ uv build
 
 项目结构：
 
-| 模块 | 作用 |
-| --- | --- |
-| `cli.py` | 参数解析与流程编排 |
-| `common.py` | 补丁模型、状态判断、原子写入、备份 |
-| `locator.py` | Steam/库目录与游戏可执行文件定位 |
-| `game.py` | `isaac-ng.exe` 二进制补丁 |
-| `runtime.py` | Repentance+ Lua runtime shim |
-| `lua.py` | 保留 BOM/换行风格的 Lua 文档 |
-| `eid.py` | External Item Descriptions 补丁 |
-| `antibirth.py` | Antibirth Music+++ 补丁 |
-| `status.py` | `--status` 报告 |
+| 模块           | 作用                               |
+| -------------- | ---------------------------------- |
+| `cli.py`       | 参数解析与流程编排                 |
+| `common.py`    | 补丁模型、状态判断、原子写入、备份 |
+| `locator.py`   | Steam/库目录与游戏可执行文件定位   |
+| `game.py`      | `isaac-ng.exe` 二进制补丁          |
+| `runtime.py`   | Repentance+ Lua runtime shim       |
+| `lua.py`       | 保留 BOM/换行风格的 Lua 文档       |
+| `eid.py`       | External Item Descriptions 补丁    |
+| `antibirth.py` | Antibirth Music+++ 补丁            |
+| `status.py`    | `--status` 报告                    |
+

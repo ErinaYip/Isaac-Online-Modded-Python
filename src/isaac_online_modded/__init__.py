@@ -1,3 +1,3 @@
-"""Standalone Linux patcher for Isaac Online Modded."""
+"""Standalone Python patcher for Isaac Online Modded."""
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
