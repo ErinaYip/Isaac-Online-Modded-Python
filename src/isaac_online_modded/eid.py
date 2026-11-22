@@ -10,6 +10,7 @@ from .common import (
     PatchError,
     PatchStatus,
     backup_once,
+    info,
 )
 from .lua import LuaDocument
 
@@ -104,7 +105,7 @@ def patch_eid_api_lua(eid_api: Path, suffix: str, dry_run: bool) -> bool:
             f"The installed EID version is missing a unique patch location: {eid_api}"
         )
     if eid_has_stage_guard(document.lines, anchor_index):
-        print(f"Already patched: {eid_api}")
+        info(f"Already patched: {eid_api}")
         return False
 
     block_end: int | None = None
@@ -126,10 +127,10 @@ def patch_eid_api_lua(eid_api: Path, suffix: str, dry_run: bool) -> bool:
 
     backup_once(eid_api, suffix, dry_run)
     if dry_run:
-        print(f"Would patch: {eid_api}")
+        info(f"Would patch: {eid_api}")
     else:
         document.write()
-        print(f"Patched: {eid_api}")
+        info(f"Patched: {eid_api}")
     return True
 
 
@@ -154,12 +155,12 @@ def find_eid_dir(mods_dir: Path) -> Path:
 
 
 def patch_external_item_descriptions(eid_dir: Path, suffix: str, dry_run: bool) -> bool:
-    print(f"Using EID mod directory: {eid_dir}")
+    info(f"Using EID mod directory: {eid_dir}")
     eid_api = eid_dir / "features" / "eid_api.lua"
     if not eid_api.exists():
         raise PatchError(f"Required EID file not found: {eid_api}")
 
     changed = patch_eid_api_lua(eid_api, suffix, dry_run)
     if not changed:
-        print("External Item Descriptions already patched.")
+        info("External Item Descriptions already patched.")
     return changed

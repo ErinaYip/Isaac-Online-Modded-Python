@@ -25,9 +25,11 @@ from .common import (
     backup_once,
     binary_patch_status,
     combine_status,
-    eprint,
+    error,
     grouped_patch_status,
+    info,
     restore_backup,
+    warn,
     write_file_atomic,
 )
 from .eid import (
@@ -97,10 +99,11 @@ __all__ = [
     "detect_game_exe",
     "eid_api_status",
     "eid_has_stage_guard",
-    "eprint",
+    "error",
     "find_antibirth_music_dir",
     "find_eid_dir",
     "grouped_patch_status",
+    "info",
     "lua_runtime_is_usable",
     "lua_runtime_status",
     "main",
@@ -114,6 +117,7 @@ __all__ = [
     "resolve_mods_dir",
     "restore_backup",
     "revert_binary_patch",
+    "warn",
     "write_file_atomic",
 ]
 
@@ -283,7 +287,7 @@ def resolve_mods(mods_dir: Path, finder, optional: bool, name: str) -> Path | No
     except ModNotFoundError as exc:
         if not optional:
             raise
-        print(f"{name} not installed; skipping. {exc}")
+        warn(f"{name} not installed; skipping. {exc}")
         return None
 
 
@@ -375,7 +379,7 @@ def main_entry() -> None:
     try:
         raise SystemExit(main(sys.argv[1:]))
     except PatchError as exc:
-        eprint(f"error: {exc}")
+        error(exc)
         raise SystemExit(1)
 
 

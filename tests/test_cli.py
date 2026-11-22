@@ -95,6 +95,15 @@ def run(argv: list[str]) -> tuple[int, str]:
     return code, output.getvalue()
 
 
+def assert_status(output: str, name: str, value: str) -> None:
+    prefix = f"{name}:"
+    for line in output.splitlines():
+        if line.startswith(prefix):
+            assert value in line, f"{name!r} line does not contain {value!r}: {line!r}"
+            return
+    raise AssertionError(f"missing status line {name!r} in:\n{output}")
+
+
 def eid_api_path(game_dir: Path) -> Path:
     return game_dir / "mods" / "External Item Descriptions" / "features" / "eid_api.lua"
 
@@ -381,22 +390,22 @@ class CLITest(unittest.TestCase):
 
             code, output = run(["--game-exe", str(exe), "--status"])
             self.assertEqual(code, 0)
-            self.assertIn("Co-op mods: not patched", output)
-            self.assertIn("Co-op characters: not patched", output)
-            self.assertIn("Online map input: not patched", output)
-            self.assertIn("Lua runtime: not installed", output)
-            self.assertIn("External Item Descriptions: not patched", output)
-            self.assertIn("Antibirth Music+++: not patched", output)
+            assert_status(output, "Co-op mods", "not patched")
+            assert_status(output, "Co-op characters", "not patched")
+            assert_status(output, "Online map input", "not patched")
+            assert_status(output, "Lua runtime", "not installed")
+            assert_status(output, "External Item Descriptions", "not patched")
+            assert_status(output, "Antibirth Music+++", "not patched")
 
             run(["--game-exe", str(exe), "--all"])
             code, output = run(["--game-exe", str(exe), "--status"])
             self.assertEqual(code, 0)
-            self.assertIn("Co-op mods: patched", output)
-            self.assertIn("Co-op characters: patched", output)
-            self.assertIn("Online map input: patched", output)
-            self.assertIn("Lua runtime: installed", output)
-            self.assertIn("External Item Descriptions: patched", output)
-            self.assertIn("Antibirth Music+++: patched", output)
+            assert_status(output, "Co-op mods", "patched")
+            assert_status(output, "Co-op characters", "patched")
+            assert_status(output, "Online map input", "patched")
+            assert_status(output, "Lua runtime", "installed")
+            assert_status(output, "External Item Descriptions", "patched")
+            assert_status(output, "Antibirth Music+++", "patched")
 
     def test_game_dir_argument_resolves_executable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

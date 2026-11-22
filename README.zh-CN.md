@@ -63,6 +63,9 @@ uv run isaac-online-modded --restore
 关闭，因为该补丁可能导致游戏无法启动；`--revert-experimental-lua-api` 只撤销
 该补丁。
 
+操作日志带有 `[INFO]`、`[WARN]`、`[ERROR]` 前缀，错误输出到 stderr。
+`--status` 与 `--print-path` 保持纯数据输出，方便脚本解析。
+
 写入前会自动创建备份，例如 `isaac-ng.exe.bak`、`main.lua.bak` 和
 `eid_api.lua.bak`。写入是原子操作，即使运行中断也不会留下被截断的可执行文件。
 

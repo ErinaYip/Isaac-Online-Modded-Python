@@ -67,6 +67,10 @@ default run.
 API patch. It is disabled by default because it can prevent the game from
 starting; `--revert-experimental-lua-api` removes only that patch.
 
+Action output is prefixed with `[INFO]`, `[WARN]`, or `[ERROR]`; errors go to
+stderr. `--status` and `--print-path` print plain data without a prefix so the
+output stays script-friendly.
+
 Backups are created before writing, for example `isaac-ng.exe.bak`,
 `main.lua.bak`, and `eid_api.lua.bak`. Writes are atomic, so an interrupted run
 cannot leave a truncated executable.

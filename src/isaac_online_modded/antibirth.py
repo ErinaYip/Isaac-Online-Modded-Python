@@ -10,6 +10,7 @@ from .common import (
     PatchError,
     PatchStatus,
     backup_once,
+    info,
 )
 from .lua import LuaDocument
 
@@ -88,7 +89,7 @@ def patch_antibirth_music(mod_dir: Path, suffix: str, dry_run: bool) -> bool:
     path = antibirth_main_path(mod_dir)
     document = LuaDocument.read(path)
     if not antibirth_calls_random(document.lines):
-        print(f"Already patched: {path}")
+        info(f"Already patched: {path}")
         return False
 
     apply_antibirth_fix(document.lines)
@@ -99,10 +100,10 @@ def patch_antibirth_music(mod_dir: Path, suffix: str, dry_run: bool) -> bool:
 
     backup_once(path, suffix, dry_run)
     if dry_run:
-        print(f"Would patch: {path}")
+        info(f"Would patch: {path}")
     else:
         document.write()
-        print(f"Patched: {path}")
+        info(f"Patched: {path}")
     return True
 
 

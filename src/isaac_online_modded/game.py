@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .common import (
     BinaryPatch,
+    info,
+    warn,
     PatchError,
     PatchStatus,
     apply_binary_patch,
@@ -127,7 +129,7 @@ def _patch_group(
     if status is PatchStatus.UNSUPPORTED:
         raise PatchError(f"The {title} does not support this game version.")
     if status is PatchStatus.PATCHED:
-        print(f"Already patched: {title}")
+        info(f"Already patched: {title}")
         return False
 
     changed = False
@@ -181,15 +183,15 @@ def patch_game_executable(
         changed |= apply_binary_patch(body, EXPERIMENTAL_LUA_API_PATCH)
 
     if not changed:
-        print("Game executable already patched.")
+        info("Game executable already patched.")
         return False
 
     backup_once(game_exe, suffix, dry_run)
     if dry_run:
-        print(f"Would write patched executable: {game_exe}")
+        info(f"Would write patched executable: {game_exe}")
     else:
         write_file_atomic(game_exe, bytes(body))
-        print(f"Patched executable: {game_exe}")
+        info(f"Patched executable: {game_exe}")
     return True
 
 
@@ -207,7 +209,7 @@ def revert_binary_patch(
 
     if patched_count == 0:
         if original_count:
-            print(f"Not applied: {patch.name}; original bytes already present.")
+            warn(f"Not applied: {patch.name}; original bytes already present.")
             return False
         raise PatchError(
             f"Neither patched nor original pattern for {patch.name!r} was found."
@@ -218,12 +220,12 @@ def revert_binary_patch(
         )
 
     index = body.find(patch.patched)
-    print(f"Will revert {patch.name} at offset 0x{index:x}")
+    info(f"Will revert {patch.name} at offset 0x{index:x}")
     backup_once(game_exe, suffix, dry_run)
     if dry_run:
-        print(f"Would write reverted executable: {game_exe}")
+        info(f"Would write reverted executable: {game_exe}")
     else:
         body[index : index + len(patch.original)] = patch.original
         write_file_atomic(game_exe, bytes(body))
-        print(f"Reverted {patch.name}: {game_exe}")
+        info(f"Reverted {patch.name}: {game_exe}")
     return True

@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.resources
 from pathlib import Path
 
-from .common import PatchError, backup_once, write_file_atomic
+from .common import PatchError, backup_once, info, warn, write_file_atomic
 
 LUA_RUNTIME_RESOURCE = "repentance_plus_main.lua"
 
@@ -53,22 +53,22 @@ def patch_lua_runtime(game_exe: Path, suffix: str, dry_run: bool) -> bool:
     if target.exists():
         current = target.read_text(encoding="utf-8", errors="replace")
         if current == runtime:
-            print(f"Lua runtime already installed: {target}")
+            info(f"Lua runtime already installed: {target}")
             return False
         if lua_runtime_is_usable(current):
-            print(f"Existing Lua runtime looks usable; leaving unchanged: {target}")
+            warn(f"Existing Lua runtime looks usable; leaving unchanged: {target}")
             return False
         backup_once(target, suffix, dry_run)
         if dry_run:
-            print(f"Would replace incomplete Lua runtime: {target}")
+            info(f"Would replace incomplete Lua runtime: {target}")
         else:
             write_file_atomic(target, runtime.encode("utf-8"))
-            print(f"Replaced incomplete Lua runtime: {target}")
+            info(f"Replaced incomplete Lua runtime: {target}")
         return True
 
     if dry_run:
-        print(f"Would install Lua runtime: {target}")
+        info(f"Would install Lua runtime: {target}")
     else:
         write_file_atomic(target, runtime.encode("utf-8"))
-        print(f"Installed Lua runtime: {target}")
+        info(f"Installed Lua runtime: {target}")
     return True

@@ -60,8 +60,16 @@ class BinaryPatch:
             )
 
 
-def eprint(*args: object) -> None:
-    print(*args, file=sys.stderr)
+def info(*args: object) -> None:
+    print("[INFO]", *args)
+
+
+def warn(*args: object) -> None:
+    print("[WARN]", *args)
+
+
+def error(*args: object) -> None:
+    print("[ERROR]", *args, file=sys.stderr)
 
 
 def write_file_atomic(path: Path, data: bytes) -> None:
@@ -90,14 +98,14 @@ def backup_once(path: Path, suffix: str, dry_run: bool) -> Path:
 
     backup_path = path.with_name(path.name + suffix)
     if backup_path.exists():
-        print(f"Using existing backup: {backup_path}")
+        info(f"Using existing backup: {backup_path}")
         return backup_path
 
     if dry_run:
-        print(f"Would create backup: {backup_path}")
+        info(f"Would create backup: {backup_path}")
     else:
         shutil.copy2(path, backup_path)
-        print(f"Created backup: {backup_path}")
+        info(f"Created backup: {backup_path}")
 
     return backup_path
 
@@ -108,11 +116,11 @@ def restore_backup(path: Path, suffix: str, dry_run: bool) -> None:
         raise PatchError(f"Backup not found: {backup_path}")
 
     if dry_run:
-        print(f"Would restore {path} from {backup_path}")
+        info(f"Would restore {path} from {backup_path}")
         return
 
     shutil.copy2(backup_path, path)
-    print(f"Restored: {path}")
+    info(f"Restored: {path}")
 
 
 def binary_patch_status(body: bytes | bytearray, patch: BinaryPatch) -> PatchStatus:
@@ -148,7 +156,7 @@ def apply_binary_patch(body: bytearray, patch: BinaryPatch) -> bool:
     status = binary_patch_status(body, patch)
     if status is PatchStatus.PATCHED:
         index = body.find(patch.patched)
-        print(f"Already patched: {patch.name} at offset 0x{index:x}")
+        info(f"Already patched: {patch.name} at offset 0x{index:x}")
         return False
     if status is not PatchStatus.NOT_PATCHED:
         raise PatchError(
@@ -158,5 +166,5 @@ def apply_binary_patch(body: bytearray, patch: BinaryPatch) -> bool:
 
     index = body.find(patch.original)
     body[index : index + len(patch.patched)] = patch.patched
-    print(f"Will patch {patch.name} at offset 0x{index:x}")
+    info(f"Will patch {patch.name} at offset 0x{index:x}")
     return True
